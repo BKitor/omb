@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU MPI%s Allreduce Latency Test"
+#define BENCHMARK "BK OSU MPI%s Allreduce PAP Latency Test"
 /*
  * Copyright (C) 2002-2021 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University.
@@ -21,10 +21,15 @@ int main(int argc, char *argv[])
     int errors = 0;
     size_t bufsize;
     options.bench = COLLECTIVE;
-    options.subtype = LAT;
+    options.subtype = LAT_PAP;
+    
+    // variables for calculating and applying an imbalance factor
+    double p2p_lat_s_time = 0.0, lat_t_total = 0.0, p2p_latency = 0.0;
+    double imbalance_factor = 0.0, im_s_time = 0.0, im_f_time = 0.0; 
+    MPI_Status lat_req_stat;
 
     set_header(HEADER);
-    set_benchmark_name("osu_allreduce");
+    set_benchmark_name("bk_osu_pap_allreduce");
     po_ret = process_options(argc, argv);
 
     if (PO_OKAY == po_ret && NONE != options.accel) {
@@ -37,6 +42,8 @@ int main(int argc, char *argv[])
     MPI_CHECK(MPI_Init(&argc, &argv));
     MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
     MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &numprocs));
+    
+    srand((int)MPI_Wtime() + rank);
 
     switch (po_ret) {
         case PO_BAD_USAGE:
@@ -93,6 +100,7 @@ int main(int argc, char *argv[])
     set_buffer(recvbuf, options.accel, 0, bufsize);
 
     print_preamble(rank);
+    if (rank == 0)printf("# BK OSU Allreduce MIF %.2f\n", options.max_imbalance_factor);
 
     for (size=options.min_message_size; size*sizeof(float) <= options.max_message_size; size *= 2) {
 
@@ -100,6 +108,28 @@ int main(int argc, char *argv[])
             options.skip = options.skip_large;
             options.iterations = options.iterations_large;
         }
+        
+        // do a p2p lat test with rank (world_size - 1) to get lat for current msize
+        #define NUM_P2P_BW_ITER 100
+        if(rank == 0){
+            p2p_lat_s_time = MPI_Wtime();
+            for (int lat_i = 0; lat_i < options.iterations + options.skip; lat_i++){
+                MPI_Send(sendbuf, size, MPI_FLOAT, numprocs-1, 102, MPI_COMM_WORLD);
+                MPI_Recv(recvbuf, size, MPI_FLOAT, numprocs-1, 102, MPI_COMM_WORLD, &lat_req_stat);
+            }
+            lat_t_total = MPI_Wtime() - p2p_lat_s_time;
+            p2p_latency = (lat_t_total) / (2.0 * (double)(options.iterations+options.skip));
+        }else if (rank == (numprocs - 1)){
+            for (int lat_i = 0; lat_i < options.iterations + options.skip; lat_i++){
+                MPI_Recv(recvbuf, size, MPI_FLOAT, 0, 102, MPI_COMM_WORLD, &lat_req_stat);
+                MPI_Send(sendbuf, size, MPI_FLOAT, 0, 102, MPI_COMM_WORLD);
+            }
+        }
+        
+        MPI_Bcast(&p2p_latency, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+        // MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+        // print_stats(rank, size * sizeof(float), p2p_latency*1e6, p2p_latency, p2p_lat_s_time);
 
         MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 
@@ -110,6 +140,19 @@ int main(int argc, char *argv[])
                 set_buffer_float(recvbuf, 0, size, i, options.accel);
                 MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
             }
+
+            // calculate imbalance factor
+            if(rank == 1){
+                imbalance_factor = options.max_imbalance_factor;
+            }
+            else{
+               imbalance_factor = ((double)rand()/(double)RAND_MAX) * options.max_imbalance_factor;
+            }
+            // apply imbalance factor
+            im_s_time = MPI_Wtime();
+            im_f_time = im_s_time + imbalance_factor * p2p_latency;
+            while(im_f_time > MPI_Wtime());
+
             t_start = MPI_Wtime();
             MPI_CHECK(MPI_Allreduce(sendbuf, recvbuf, size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD ));
             t_stop=MPI_Wtime();

@@ -225,6 +225,7 @@ enum test_subtype {
     LAT,
     LAT_MT,
     LAT_MP,
+    LAT_PAP,
     NBC,
 };
 
@@ -303,6 +304,7 @@ struct options_t {
     int pairs;
     int validate;
     enum buffer_num buf_num;
+    double max_imbalance_factor;
 };
 
 struct bad_usage_t{

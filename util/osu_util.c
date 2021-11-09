@@ -321,6 +321,14 @@ static int set_num_iterations (int value)
     return 0;
 }
 
+static int set_max_imbalace_factor (double value){
+    if (0 > value){
+        return -1;
+    }
+    options.max_imbalance_factor = value;
+    return 0; 
+}
+
 static int set_validate (int value)
 {
     if (value < 0 || value > 1) {
@@ -424,6 +432,7 @@ int process_options (int argc, char *argv[])
             {"vary-window",     required_argument,  0,  'V'},
             {"validation",      required_argument,  0,  'c'},
             {"buffer-num",      required_argument,  0,  'b'},
+            {"max-i-f",         required_argument,  0,  'F'},
     };
 
     enable_accel_support();
@@ -451,6 +460,11 @@ int process_options (int argc, char *argv[])
             optstring = "+:hvfm:i:x:M:a:c:";
             if (accel_enabled) {
                 optstring = (CUDA_KERNEL_ENABLED) ? "+:d:hvfm:i:x:M:r:a:c:" : "+:d:hvfm:i:x:M:a:c:";
+            }
+        } else if (options.subtype == LAT_PAP) { /* PAP-Aware */
+            optstring = "+:hvfm:i:x:M:a:c:F:";
+            if (accel_enabled) {
+                optstring = (CUDA_KERNEL_ENABLED) ? "+:d:hvfm:i:x:M:r:a:c:F:" : "+:d:hvfm:i:x:M:a:c:F:";
             }
         } else { /* Non-Blocking */
             optstring = "+:hvfm:i:x:M:t:a:c";
@@ -494,6 +508,7 @@ int process_options (int argc, char *argv[])
     options.print_rate = 1;
     options.validate = 0;
     options.buf_num = SINGLE;
+    options.max_imbalance_factor = 0.0;
 
     options.src = 'H';
     options.dst = 'H';
@@ -513,6 +528,7 @@ int process_options (int argc, char *argv[])
             options.num_processes = DEF_NUM_PROCESSES;
             options.min_message_size = 0;
             options.sender_processes = DEF_NUM_PROCESSES;
+        case LAT_PAP:
         case LAT:
         case NBC:
             if (options.bench == COLLECTIVE) {
@@ -747,6 +763,16 @@ int process_options (int argc, char *argv[])
                     bad_usage.message = "Please use 'single' or 'multiple' for buffer type";
                     bad_usage.optarg = optarg;
                     return PO_BAD_USAGE;
+                }
+                break;
+            case 'F':
+                if (options.bench == COLLECTIVE && options.subtype == LAT_PAP) {
+                    if(set_max_imbalace_factor((double) atoi(optarg))){
+                        bad_usage.message = "Invalid Max Imbalance Factor";
+                        bad_usage.optarg = optarg;
+
+                        return PO_BAD_USAGE;
+                    }
                 }
                 break;
             case ':':
