@@ -1,3 +1,3 @@
-pushd $HOME/openmpi-5.0.0rc2
+pushd $HOME/Niagara/ompi
 source initenv.bash
 popd
