@@ -110,7 +110,6 @@ int main(int argc, char *argv[])
         }
         
         // do a p2p lat test with rank (world_size - 1) to get lat for current msize
-        #define NUM_P2P_BW_ITER 100
         if(rank == 0){
             p2p_lat_s_time = MPI_Wtime();
             for (int lat_i = 0; lat_i < options.iterations + options.skip; lat_i++){
@@ -142,16 +141,21 @@ int main(int argc, char *argv[])
             }
 
             // calculate imbalance factor
-            if(rank == 1){
+            if(0 == rank){
+                imbalance_factor = 0;
+            }
+			else if(1 == rank){
                 imbalance_factor = options.max_imbalance_factor;
             }
             else{
                imbalance_factor = ((double)rand()/(double)RAND_MAX) * options.max_imbalance_factor;
             }
             // apply imbalance factor
-            im_s_time = MPI_Wtime();
-            im_f_time = im_s_time + imbalance_factor * p2p_latency;
-            while(im_f_time > MPI_Wtime());
+			/*im_s_time = MPI_Wtime();*/
+			/*im_f_time = im_s_time + imbalance_factor * p2p_latency;*/
+			/*while(im_f_time > MPI_Wtime());*/
+			int64_t sleep_time = (int64_t)(p2p_latency * imbalance_factor * 1e6);
+			usleep(sleep_time);
 
             t_start = MPI_Wtime();
             MPI_CHECK(MPI_Allreduce(sendbuf, recvbuf, size, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD ));
